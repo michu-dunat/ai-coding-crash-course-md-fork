@@ -16,6 +16,11 @@ import {
   users,
   videoWatchEvents,
 } from "~/db/schema";
+import {
+  getCourseRatingSummaries,
+  type CourseRatingSummary,
+} from "~/services/courseRatingService";
+import { getUnansweredQuestions } from "~/services/commentService";
 
 /** A single instructor id, or "all" for platform-wide data. */
 export type AnalyticsScope = number | "all";
@@ -517,3 +522,119 @@ export function getAtRiskStudents(
     .map((r) => r.row);
 }
 
+
+
+export type CourseBreakdownRow = {
+  courseId: number;
+  title: string;
+  enrollments: number;
+  /** 0–100, mean of per-enrollment progress */
+  averageProgress: number;
+  /** 0–100, share of enrollments completed */
+  completionRate: number;
+  /** 1dp, null when the course has no ratings */
+  averageRating: number | null;
+  ratingCount: number;
+};
+
+export function getCourseBreakdown(scope: AnalyticsScope): CourseBreakdownRow[] {
+  const courseIds = getScopedCourseIds(scope);
+  if (courseIds.length === 0) return [];
+
+  const courseRows = db
+    .select({ id: courses.id, title: courses.title })
+    .from(courses)
+    .where(inArray(courses.id, courseIds))
+    .orderBy(courses.id)
+    .all();
+
+  const enrollmentRows = db
+    .select({
+      userId: enrollments.userId,
+      courseId: enrollments.courseId,
+      completedAt: enrollments.completedAt,
+    })
+    .from(enrollments)
+    .where(inArray(enrollments.courseId, courseIds))
+    .all();
+
+  const lessonRows = db
+    .select({ lessonId: lessons.id, courseId: modules.courseId })
+    .from(lessons)
+    .innerJoin(modules, eq(lessons.moduleId, modules.id))
+    .where(inArray(modules.courseId, courseIds))
+    .all();
+  const lessonCourse = new Map(lessonRows.map((l) => [l.lessonId, l.courseId]));
+  const lessonsPerCourse = new Map<number, number>();
+  for (const l of lessonRows) {
+    lessonsPerCourse.set(l.courseId, (lessonsPerCourse.get(l.courseId) ?? 0) + 1);
+  }
+
+  const completedCount = new Map<string, number>();
+  if (lessonRows.length > 0 && enrollmentRows.length > 0) {
+    const progressRows = db
+      .select({ userId: lessonProgress.userId, lessonId: lessonProgress.lessonId })
+      .from(lessonProgress)
+      .where(
+        and(
+          eq(lessonProgress.status, LessonProgressStatus.Completed),
+          inArray(lessonProgress.lessonId, [...lessonCourse.keys()])
+        )
+      )
+      .all();
+    for (const p of progressRows) {
+      const key = `${p.userId}:${lessonCourse.get(p.lessonId)}`;
+      completedCount.set(key, (completedCount.get(key) ?? 0) + 1);
+    }
+  }
+
+  const perCourse = new Map<number, { count: number; progress: number; completed: number }>();
+  for (const e of enrollmentRows) {
+    const acc = perCourse.get(e.courseId) ?? { count: 0, progress: 0, completed: 0 };
+    const total = lessonsPerCourse.get(e.courseId) ?? 0;
+    const done = completedCount.get(`${e.userId}:${e.courseId}`) ?? 0;
+    acc.count++;
+    acc.progress += total === 0 ? 0 : Math.min(done / total, 1) * 100;
+    if (e.completedAt !== null) acc.completed++;
+    perCourse.set(e.courseId, acc);
+  }
+
+  const ratings = getCourseRatingSummaries(courseIds);
+
+  return courseRows.map((c) => {
+    const acc = perCourse.get(c.id) ?? { count: 0, progress: 0, completed: 0 };
+    const rating = ratings.get(c.id) ?? { average: null, count: 0 };
+    return {
+      courseId: c.id,
+      title: c.title,
+      enrollments: acc.count,
+      averageProgress: acc.count === 0 ? 0 : acc.progress / acc.count,
+      completionRate: pct(acc.completed, acc.count),
+      averageRating: rating.average,
+      ratingCount: rating.count,
+    };
+  });
+}
+
+/** Mean of every individual rating across in-scope courses (1dp). */
+export function getOverviewRating(scope: AnalyticsScope): CourseRatingSummary {
+  let sum = 0;
+  let count = 0;
+  for (const r of getCourseRatingSummaries(getScopedCourseIds(scope)).values()) {
+    if (r.average === null) continue;
+    sum += r.average * r.count;
+    count += r.count;
+  }
+  return {
+    average: count === 0 ? null : Math.round((sum / count) * 10) / 10,
+    count,
+  };
+}
+
+/** Unanswered questions (see commentService) on in-scope courses. */
+export function getUnansweredQuestionCount(scope: AnalyticsScope): number {
+  const courseIds = new Set(getScopedCourseIds(scope));
+  return getUnansweredQuestions(scope === "all" ? null : scope).filter((q) =>
+    courseIds.has(q.courseId)
+  ).length;
+}
