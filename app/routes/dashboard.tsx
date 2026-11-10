@@ -15,6 +15,8 @@ import {
   getCourseBreakdown,
   getOverviewRating,
   getUnansweredQuestionCount,
+  getRevenueStats,
+  getWeeklyEnrollments,
   type AnalyticsScope,
 } from "~/services/instructorAnalyticsService";
 import { UserRole } from "~/db/schema";
@@ -62,6 +64,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       courseBreakdown: getCourseBreakdown(scope),
       overviewRating: getOverviewRating(scope),
       unansweredQuestions: getUnansweredQuestionCount(scope),
+      weeklyEnrollments: getWeeklyEnrollments(scope, new Date()),
+      revenue: getRevenueStats(scope, new Date()),
     };
   }
 

@@ -1,6 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "~/db";
 import {
+  coupons,
   courses,
   CourseStatus,
   enrollments,
@@ -8,6 +9,7 @@ import {
   LessonProgressStatus,
   lessons,
   modules,
+  purchases,
   quizAttempts,
   quizzes,
 } from "~/db/schema";
@@ -169,6 +171,134 @@ export function getOverviewStats(
   };
 }
 
+
+export type WeeklyEnrollment = {
+  /** ISO timestamp of the start of the 7-day bucket */
+  weekStart: string;
+  count: number;
+};
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const TREND_WEEKS = 12;
+
+/**
+ * New enrollments per rolling 7-day week over the last 12 weeks, oldest
+ * first. The final bucket ends at `now`; empty weeks are zero-filled.
+ */
+export function getWeeklyEnrollments(
+  scope: AnalyticsScope,
+  now: Date
+): WeeklyEnrollment[] {
+  const end = now.getTime();
+  const start = end - TREND_WEEKS * WEEK_MS;
+  const weeks: WeeklyEnrollment[] = Array.from({ length: TREND_WEEKS }, (_, i) => ({
+    weekStart: new Date(start + i * WEEK_MS).toISOString(),
+    count: 0,
+  }));
+
+  const courseIds = getScopedCourseIds(scope);
+  if (courseIds.length === 0) return weeks;
+
+  const rows = db
+    .select({ enrolledAt: enrollments.enrolledAt })
+    .from(enrollments)
+    .where(inArray(enrollments.courseId, courseIds))
+    .all();
+  for (const r of rows) {
+    const t = new Date(r.enrolledAt).getTime();
+    if (t < start || t > end) continue;
+    const i = Math.min(Math.floor((t - start) / WEEK_MS), TREND_WEEKS - 1);
+    weeks[i].count++;
+  }
+  return weeks;
+}
+
+export type RevenueStats = {
+  /** cents */
+  totalRevenue: number;
+  /** cents */
+  revenueLast30Days: number;
+  purchaseCount: number;
+  byCourse: { courseId: number; title: string; revenue: number; purchases: number }[];
+  byCountry: { country: string | null; revenue: number; purchases: number }[];
+  teamSeats: { redeemed: number; total: number };
+};
+
+export function getRevenueStats(scope: AnalyticsScope, now: Date): RevenueStats {
+  const courseIds = getScopedCourseIds(scope);
+  const empty: RevenueStats = {
+    totalRevenue: 0,
+    revenueLast30Days: 0,
+    purchaseCount: 0,
+    byCourse: [],
+    byCountry: [],
+    teamSeats: { redeemed: 0, total: 0 },
+  };
+  if (courseIds.length === 0) return empty;
+
+  // A team purchase is one purchase row (full amount at purchase time);
+  // its seats are the coupons attached to it.
+  const rows = db
+    .select({
+      courseId: purchases.courseId,
+      title: courses.title,
+      amountPaid: purchases.amountPaid,
+      country: purchases.country,
+      createdAt: purchases.createdAt,
+    })
+    .from(purchases)
+    .innerJoin(courses, eq(purchases.courseId, courses.id))
+    .where(inArray(purchases.courseId, courseIds))
+    .all();
+  if (rows.length === 0) return empty;
+
+  const cutoff = now.getTime() - THIRTY_DAYS_MS;
+  let totalRevenue = 0;
+  let revenueLast30Days = 0;
+  const byCourse = new Map<number, RevenueStats["byCourse"][number]>();
+  const byCountry = new Map<string | null, RevenueStats["byCountry"][number]>();
+  for (const r of rows) {
+    totalRevenue += r.amountPaid;
+    const t = new Date(r.createdAt).getTime();
+    if (t >= cutoff && t <= now.getTime()) revenueLast30Days += r.amountPaid;
+
+    const c = byCourse.get(r.courseId) ?? {
+      courseId: r.courseId,
+      title: r.title,
+      revenue: 0,
+      purchases: 0,
+    };
+    c.revenue += r.amountPaid;
+    c.purchases++;
+    byCourse.set(r.courseId, c);
+
+    const k = byCountry.get(r.country) ?? { country: r.country, revenue: 0, purchases: 0 };
+    k.revenue += r.amountPaid;
+    k.purchases++;
+    byCountry.set(r.country, k);
+  }
+
+  const seatRows = db
+    .select({ redeemedBy: coupons.redeemedByUserId })
+    .from(coupons)
+    .innerJoin(purchases, eq(coupons.purchaseId, purchases.id))
+    .where(inArray(purchases.courseId, courseIds))
+    .all();
+
+  const byRevenueDesc = (a: { revenue: number }, b: { revenue: number }) =>
+    b.revenue - a.revenue;
+  return {
+    totalRevenue,
+    revenueLast30Days,
+    purchaseCount: rows.length,
+    byCourse: [...byCourse.values()].sort(byRevenueDesc),
+    byCountry: [...byCountry.values()].sort(byRevenueDesc),
+    teamSeats: {
+      redeemed: seatRows.filter((s) => s.redeemedBy !== null).length,
+      total: seatRows.length,
+    },
+  };
+}
 
 export type CourseBreakdownRow = {
   courseId: number;

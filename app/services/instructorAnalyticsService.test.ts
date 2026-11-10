@@ -11,8 +11,9 @@ vi.mock("~/db", () => ({
   },
 }));
 
+import { getOverviewStats } from "~/services/instructorAnalyticsService";
+import { getWeeklyEnrollments } from "~/services/instructorAnalyticsService";
 import {
-  getOverviewStats,
   getCourseBreakdown,
   getOverviewRating,
   getUnansweredQuestionCount,
@@ -163,6 +164,77 @@ describe("getOverviewStats", () => {
     const stats = getOverviewStats(base.instructor.id, NOW);
     expect(stats.quizPassRate).toBe(50);
     expect(stats.averageQuizScore).toBeCloseTo(70);
+  });
+});
+
+describe("getWeeklyEnrollments", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  let n = 0;
+  function makeCourse(instructorId: number) {
+    return testDb
+      .insert(schema.courses)
+      .values({
+        title: "C",
+        slug: `wk-${++n}`,
+        description: "d",
+        salesCopy: "s",
+        instructorId,
+        categoryId: base.category.id,
+        status: schema.CourseStatus.Published,
+      })
+      .returning()
+      .get();
+  }
+  function enrollAt(courseId: number, daysAgo: number) {
+    const user = testDb
+      .insert(schema.users)
+      .values({ name: "S", email: `wk${++n}@x.com`, role: schema.UserRole.Student })
+      .returning()
+      .get();
+    const enrolledAt = new Date(NOW.getTime() - daysAgo * DAY).toISOString();
+    testDb.insert(schema.enrollments).values({ userId: user.id, courseId, enrolledAt }).run();
+  }
+
+  it("returns 12 zero-filled weeks, oldest first, ending at now", () => {
+    const weeks = getWeeklyEnrollments(base.instructor.id, NOW);
+    expect(weeks).toHaveLength(12);
+    expect(weeks.every((w) => w.count === 0)).toBe(true);
+    expect(weeks[11].weekStart).toBe("2026-05-25T00:00:00.000Z");
+    expect(weeks[0].weekStart).toBe("2026-03-09T00:00:00.000Z");
+  });
+
+  it("buckets enrollments into weeks relative to now", () => {
+    const c = makeCourse(base.instructor.id);
+    enrollAt(c.id, 0);
+    enrollAt(c.id, 6.9);
+    enrollAt(c.id, 7.5);
+    enrollAt(c.id, 20);
+    const counts = getWeeklyEnrollments(base.instructor.id, NOW).map((w) => w.count);
+    expect(counts).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2]);
+  });
+
+  it("excludes enrollments outside the 12-week window", () => {
+    const c = makeCourse(base.instructor.id);
+    enrollAt(c.id, 84); // exactly at window start: included
+    enrollAt(c.id, 84.1); // just before: excluded
+    enrollAt(c.id, -1); // in the future: excluded
+    const counts = getWeeklyEnrollments(base.instructor.id, NOW).map((w) => w.count);
+    expect(counts).toEqual([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("respects scope", () => {
+    const other = testDb
+      .insert(schema.users)
+      .values({ name: "O", email: "o-wk@x.com", role: schema.UserRole.Instructor })
+      .returning()
+      .get();
+    enrollAt(makeCourse(base.instructor.id).id, 1);
+    enrollAt(makeCourse(other.id).id, 1);
+    const sum = (s: number | "all") =>
+      getWeeklyEnrollments(s, NOW).reduce((a, w) => a + w.count, 0);
+    expect(sum(base.instructor.id)).toBe(1);
+    expect(sum(other.id)).toBe(1);
+    expect(sum("all")).toBe(2);
   });
 });
 

@@ -1,10 +1,14 @@
 import { Link, useSearchParams } from "react-router";
 import { BarChart3 } from "lucide-react";
+import { WeeklyEnrollmentChart } from "~/components/weekly-enrollment-chart";
 import type {
   CourseBreakdownRow,
   OverviewStats,
+  RevenueStats,
+  WeeklyEnrollment,
 } from "~/services/instructorAnalyticsService";
 import type { CourseRatingSummary } from "~/services/courseRatingService";
+import { RevenueTab } from "~/components/instructor-analytics-revenue";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
@@ -24,6 +28,8 @@ type Props = {
   courseBreakdown: CourseBreakdownRow[];
   overviewRating: CourseRatingSummary;
   unansweredQuestions: number;
+  weeklyEnrollments: WeeklyEnrollment[];
+  revenue: RevenueStats;
 };
 
 function formatRating(average: number | null, count: number) {
@@ -109,6 +115,8 @@ export function InstructorAnalyticsDashboard({
   courseBreakdown,
   overviewRating,
   unansweredQuestions,
+  weeklyEnrollments,
+  revenue,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -204,13 +212,13 @@ export function InstructorAnalyticsDashboard({
             <CourseBreakdownTable rows={courseBreakdown} />
           </TabsContent>
           <TabsContent value="students" className="mt-6">
-            <Placeholder title="Student" />
+            <WeeklyEnrollmentChart weeks={weeklyEnrollments} />
           </TabsContent>
           <TabsContent value="content" className="mt-6">
             <Placeholder title="Content" />
           </TabsContent>
           <TabsContent value="revenue" className="mt-6">
-            <Placeholder title="Revenue" />
+            <RevenueTab revenue={revenue} />
           </TabsContent>
         </Tabs>
       )}
