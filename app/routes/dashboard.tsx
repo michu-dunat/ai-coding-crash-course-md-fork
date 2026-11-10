@@ -22,6 +22,7 @@ import {
   type AnalyticsScope,
 } from "~/services/instructorAnalyticsService";
 import { UserRole } from "~/db/schema";
+import { getVideoDropoff } from "~/services/videoDropoffService";
 import { InstructorAnalyticsDashboard } from "~/components/instructor-analytics-dashboard";
 
 export function meta() {
@@ -60,6 +61,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     const instructors = isAdmin
       ? getUsersByRole(UserRole.Instructor).map((u) => ({ id: u.id, name: u.name }))
       : [];
+    const content = getContentAnalytics(scope, requestedCourseId);
     return {
       view: "analytics" as const,
       isAdmin,
@@ -71,7 +73,9 @@ export async function loader({ request }: Route.LoaderArgs) {
       unansweredQuestions: getUnansweredQuestionCount(scope),
       weeklyEnrollments: getWeeklyEnrollments(scope, new Date()),
       revenue: getRevenueStats(scope, new Date()),
-      content: getContentAnalytics(scope, requestedCourseId),
+      content,
+      videoDropoff:
+        content.selectedCourseId === null ? [] : getVideoDropoff(content.selectedCourseId),
       atRiskStudents: getAtRiskStudents(scope, new Date()),
     };
   }
