@@ -261,6 +261,7 @@ export type QueuedQuestion = {
   createdAt: string;
   lessonId: number;
   lessonTitle: string;
+  courseId: number;
   courseTitle: string;
   courseSlug: string;
   authorId: number;
@@ -319,6 +320,7 @@ export function getUnansweredQuestions(
       createdAt: comments.createdAt,
       lessonId: lessons.id,
       lessonTitle: lessons.title,
+      courseId: courses.id,
       courseTitle: courses.title,
       courseSlug: courses.slug,
       authorId: author.id,

@@ -1,6 +1,10 @@
 import { Link, useSearchParams } from "react-router";
 import { BarChart3 } from "lucide-react";
-import type { OverviewStats } from "~/services/instructorAnalyticsService";
+import type {
+  CourseBreakdownRow,
+  OverviewStats,
+} from "~/services/instructorAnalyticsService";
+import type { CourseRatingSummary } from "~/services/courseRatingService";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
@@ -17,7 +21,59 @@ type Props = {
   instructors: { id: number; name: string }[];
   selectedInstructorId: number | null;
   overview: OverviewStats;
+  courseBreakdown: CourseBreakdownRow[];
+  overviewRating: CourseRatingSummary;
+  unansweredQuestions: number;
 };
+
+function formatRating(average: number | null, count: number) {
+  return average === null ? "No ratings" : `${average.toFixed(1)} (${count})`;
+}
+
+function CourseBreakdownTable({ rows }: { rows: CourseBreakdownRow[] }) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-muted-foreground">No courses in scope.</p>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 text-left text-muted-foreground">
+          <tr>
+            <th className="p-3 font-medium">Course</th>
+            <th className="p-3 font-medium">Enrollments</th>
+            <th className="p-3 font-medium">Avg progress</th>
+            <th className="p-3 font-medium">Completion</th>
+            <th className="p-3 font-medium">Rating</th>
+            <th className="p-3 font-medium" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.courseId} className="border-t">
+              <td className="p-3 font-medium">
+                <Link to={`/instructor/${r.courseId}`} className="hover:underline">
+                  {r.title}
+                </Link>
+              </td>
+              <td className="p-3">{r.enrollments}</td>
+              <td className="p-3">{formatPct(r.averageProgress)}</td>
+              <td className="p-3">{formatPct(r.completionRate)}</td>
+              <td className="p-3">{formatRating(r.averageRating, r.ratingCount)}</td>
+              <td className="p-3 text-right">
+                <Link
+                  to={`/instructor/${r.courseId}/students`}
+                  className="text-primary hover:underline"
+                >
+                  Students
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 const ALL = "all";
 
@@ -50,6 +106,9 @@ export function InstructorAnalyticsDashboard({
   instructors,
   selectedInstructorId,
   overview,
+  courseBreakdown,
+  overviewRating,
+  unansweredQuestions,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -124,7 +183,25 @@ export function InstructorAnalyticsDashboard({
                 value={formatPct(overview.quizPassRate)}
                 sub={`Average score ${formatPct(overview.averageQuizScore)}`}
               />
+              <StatCard
+                label="Average rating"
+                value={
+                  overviewRating.average === null
+                    ? "—"
+                    : overviewRating.average.toFixed(1)
+                }
+                sub={`${overviewRating.count} rating${overviewRating.count === 1 ? "" : "s"}`}
+              />
+              <Link to="/instructor/questions" className="block">
+                <StatCard
+                  label="Unanswered questions"
+                  value={String(unansweredQuestions)}
+                  sub="View the questions queue →"
+                />
+              </Link>
             </div>
+            <h2 className="mb-3 mt-8 text-lg font-semibold">Courses</h2>
+            <CourseBreakdownTable rows={courseBreakdown} />
           </TabsContent>
           <TabsContent value="students" className="mt-6">
             <Placeholder title="Student" />
