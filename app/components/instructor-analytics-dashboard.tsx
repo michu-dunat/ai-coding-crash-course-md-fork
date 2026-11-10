@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from "react-router";
+import { Link, useFetcher, useSearchParams } from "react-router";
 import { BarChart3 } from "lucide-react";
 import { WeeklyEnrollmentChart } from "~/components/weekly-enrollment-chart";
 import type { AtRiskStudent, ContentAnalytics, OverviewStats, RevenueStats, WeeklyEnrollment } from "~/services/instructorAnalyticsService";
@@ -6,6 +6,8 @@ import { RevenueTab } from "~/components/instructor-analytics-revenue";
 import { ContentTab } from "~/components/lesson-funnel-chart";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import {
   Select,
@@ -24,13 +26,50 @@ type Props = {
   revenue: RevenueStats;
   content: ContentAnalytics;
   atRiskStudents: AtRiskStudent[];
+  atRiskThreshold: { days: number; editable: boolean };
 };
 
-function AtRiskList({ students }: { students: AtRiskStudent[] }) {
+function AtRiskThresholdControl({ days, editable }: { days: number; editable: boolean }) {
+  const fetcher = useFetcher<{ error?: string; ok?: boolean }>();
+  const error = fetcher.data?.error;
+  return (
+    <fetcher.Form method="post" className="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="intent" value="set-at-risk-threshold" />
+      <div className="space-y-1">
+        <Label htmlFor="at-risk-threshold">At-risk after (days inactive)</Label>
+        <Input
+          id="at-risk-threshold"
+          name="days"
+          type="number"
+          min={3}
+          max={90}
+          defaultValue={days}
+          key={days}
+          readOnly={!editable}
+          disabled={!editable}
+          className="w-28"
+          aria-invalid={error ? true : undefined}
+        />
+      </div>
+      {editable ? (
+        <Button type="submit" disabled={fetcher.state !== "idle"}>
+          Save
+        </Button>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          This instructor's threshold (read-only).
+        </p>
+      )}
+      {error && <p className="w-full text-sm text-destructive">{error}</p>}
+    </fetcher.Form>
+  );
+}
+
+function AtRiskList({ students, days }: { students: AtRiskStudent[]; days: number }) {
   if (students.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-        No students are at risk. Everyone has been active in the last 14 days.
+        No students are at risk. Everyone has been active in the last {days} days.
       </div>
     );
   }
@@ -39,7 +78,7 @@ function AtRiskList({ students }: { students: AtRiskStudent[] }) {
       <CardHeader>
         <h2 className="text-lg font-semibold">At-risk students</h2>
         <p className="text-sm text-muted-foreground">
-          Inactive for more than 14 days, longest inactivity first.
+          Inactive for more than {days} days, longest inactivity first.
         </p>
       </CardHeader>
       <CardContent>
@@ -112,6 +151,7 @@ export function InstructorAnalyticsDashboard({
   revenue,
   content,
   atRiskStudents,
+  atRiskThreshold,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -192,7 +232,8 @@ export function InstructorAnalyticsDashboard({
           <TabsContent value="students" className="mt-6">
             <div className="space-y-6">
               <WeeklyEnrollmentChart weeks={weeklyEnrollments} />
-              <AtRiskList students={atRiskStudents} />
+              <AtRiskThresholdControl {...atRiskThreshold} />
+              <AtRiskList students={atRiskStudents} days={atRiskThreshold.days} />
             </div>
           </TabsContent>
           <TabsContent value="content" className="mt-6">

@@ -14,6 +14,7 @@ vi.mock("~/db", () => ({
 import { getAtRiskStudents, getOverviewStats } from "~/services/instructorAnalyticsService";
 import { getWeeklyEnrollments } from "~/services/instructorAnalyticsService";
 import { getContentAnalytics } from "~/services/instructorAnalyticsService";
+import { getAtRiskThreshold, setAtRiskThreshold } from "~/services/instructorAnalyticsService";
 
 const NOW = new Date("2026-06-01T00:00:00.000Z");
 
@@ -490,5 +491,39 @@ describe("getAtRiskStudents", () => {
     expect(getAtRiskStudents(base.instructor.id, NOW).map((r) => r.userId)).toEqual([mine.id]);
     expect(getAtRiskStudents(other.id, NOW).map((r) => r.userId)).toEqual([theirs.id]);
     expect(getAtRiskStudents("all", NOW)).toHaveLength(2);
+  });
+});
+
+describe("at-risk threshold", () => {
+  it("defaults to 14 days", () => {
+    expect(getAtRiskThreshold(base.instructor.id)).toBe(14);
+  });
+
+  it("accepts 3 and 90 and persists them", () => {
+    setAtRiskThreshold(base.instructor.id, 3);
+    expect(getAtRiskThreshold(base.instructor.id)).toBe(3);
+    setAtRiskThreshold(base.instructor.id, 90);
+    expect(getAtRiskThreshold(base.instructor.id)).toBe(90);
+  });
+
+  it("rejects 2 and 91 without changing the saved value", () => {
+    expect(() => setAtRiskThreshold(base.instructor.id, 2)).toThrow();
+    expect(() => setAtRiskThreshold(base.instructor.id, 91)).toThrow();
+    expect(getAtRiskThreshold(base.instructor.id)).toBe(14);
+  });
+
+  it("the at-risk list honours a custom threshold", () => {
+    const s = testDb
+      .insert(schema.users)
+      .values({ name: "Five", email: "five@x.com", role: schema.UserRole.Student })
+      .returning()
+      .get();
+    // 5 days inactive: not at risk at 14 days, at risk at 3
+    testDb
+      .insert(schema.enrollments)
+      .values({ userId: s.id, courseId: base.course.id, enrolledAt: "2026-05-27T00:00:00.000Z" })
+      .run();
+    expect(getAtRiskStudents(base.instructor.id, NOW, 14)).toEqual([]);
+    expect(getAtRiskStudents(base.instructor.id, NOW, 3).map((r) => r.userId)).toEqual([s.id]);
   });
 });
