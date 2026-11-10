@@ -164,3 +164,44 @@ export function getOverviewStats(
   };
 }
 
+
+export type WeeklyEnrollment = {
+  /** ISO timestamp of the start of the 7-day bucket */
+  weekStart: string;
+  count: number;
+};
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const TREND_WEEKS = 12;
+
+/**
+ * New enrollments per rolling 7-day week over the last 12 weeks, oldest
+ * first. The final bucket ends at `now`; empty weeks are zero-filled.
+ */
+export function getWeeklyEnrollments(
+  scope: AnalyticsScope,
+  now: Date
+): WeeklyEnrollment[] {
+  const end = now.getTime();
+  const start = end - TREND_WEEKS * WEEK_MS;
+  const weeks: WeeklyEnrollment[] = Array.from({ length: TREND_WEEKS }, (_, i) => ({
+    weekStart: new Date(start + i * WEEK_MS).toISOString(),
+    count: 0,
+  }));
+
+  const courseIds = getScopedCourseIds(scope);
+  if (courseIds.length === 0) return weeks;
+
+  const rows = db
+    .select({ enrolledAt: enrollments.enrolledAt })
+    .from(enrollments)
+    .where(inArray(enrollments.courseId, courseIds))
+    .all();
+  for (const r of rows) {
+    const t = new Date(r.enrolledAt).getTime();
+    if (t < start || t > end) continue;
+    const i = Math.min(Math.floor((t - start) / WEEK_MS), TREND_WEEKS - 1);
+    weeks[i].count++;
+  }
+  return weeks;
+}
