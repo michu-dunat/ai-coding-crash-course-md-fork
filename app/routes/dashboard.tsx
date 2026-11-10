@@ -10,7 +10,7 @@ import { AlertTriangle, BookOpen, CheckCircle2, GraduationCap, PlayCircle } from
 import { CourseImage } from "~/components/course-image";
 import { data, isRouteErrorResponse } from "react-router";
 import { getUserById, getUsersByRole } from "~/services/userService";
-import { getOverviewStats, getRevenueStats, getWeeklyEnrollments, type AnalyticsScope } from "~/services/instructorAnalyticsService";
+import { getOverviewStats, getRevenueStats, getWeeklyEnrollments, getContentAnalytics, type AnalyticsScope } from "~/services/instructorAnalyticsService";
 import { UserRole } from "~/db/schema";
 import { InstructorAnalyticsDashboard } from "~/components/instructor-analytics-dashboard";
 
@@ -44,6 +44,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     const scope: AnalyticsScope = isAdmin
       ? (selectedInstructorId ?? "all")
       : currentUserId;
+    const courseParam = Number(new URL(request.url).searchParams.get("courseId"));
+    const requestedCourseId =
+      Number.isInteger(courseParam) && courseParam > 0 ? courseParam : null;
     const instructors = isAdmin
       ? getUsersByRole(UserRole.Instructor).map((u) => ({ id: u.id, name: u.name }))
       : [];
@@ -55,6 +58,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       overview: getOverviewStats(scope, new Date()),
       weeklyEnrollments: getWeeklyEnrollments(scope, new Date()),
       revenue: getRevenueStats(scope, new Date()),
+      content: getContentAnalytics(scope, requestedCourseId),
     };
   }
 

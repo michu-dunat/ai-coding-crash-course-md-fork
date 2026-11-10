@@ -1,8 +1,9 @@
 import { Link, useSearchParams } from "react-router";
 import { BarChart3 } from "lucide-react";
 import { WeeklyEnrollmentChart } from "~/components/weekly-enrollment-chart";
-import type { OverviewStats, RevenueStats, WeeklyEnrollment } from "~/services/instructorAnalyticsService";
+import type { ContentAnalytics, OverviewStats, RevenueStats, WeeklyEnrollment } from "~/services/instructorAnalyticsService";
 import { RevenueTab } from "~/components/instructor-analytics-revenue";
+import { ContentTab } from "~/components/lesson-funnel-chart";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
@@ -21,6 +22,7 @@ type Props = {
   overview: OverviewStats;
   weeklyEnrollments: WeeklyEnrollment[];
   revenue: RevenueStats;
+  content: ContentAnalytics;
 };
 
 const ALL = "all";
@@ -56,11 +58,13 @@ export function InstructorAnalyticsDashboard({
   overview,
   weeklyEnrollments,
   revenue,
+  content,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   function onInstructorChange(value: string) {
     const next = new URLSearchParams(searchParams);
+    next.delete("courseId");
     if (value === ALL) next.delete("instructorId");
     else next.set("instructorId", value);
     setSearchParams(next);
@@ -109,7 +113,7 @@ export function InstructorAnalyticsDashboard({
           </Link>
         </div>
       ) : (
-        <Tabs defaultValue="overview">
+        <Tabs defaultValue={searchParams.has("courseId") ? "content" : "overview"}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="students">Students</TabsTrigger>
@@ -136,7 +140,7 @@ export function InstructorAnalyticsDashboard({
             <WeeklyEnrollmentChart weeks={weeklyEnrollments} />
           </TabsContent>
           <TabsContent value="content" className="mt-6">
-            <Placeholder title="Content" />
+            <ContentTab content={content} />
           </TabsContent>
           <TabsContent value="revenue" className="mt-6">
             <RevenueTab revenue={revenue} />

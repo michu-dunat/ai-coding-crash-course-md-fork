@@ -13,6 +13,7 @@ vi.mock("~/db", () => ({
 
 import { getOverviewStats } from "~/services/instructorAnalyticsService";
 import { getWeeklyEnrollments } from "~/services/instructorAnalyticsService";
+import { getContentAnalytics } from "~/services/instructorAnalyticsService";
 
 const NOW = new Date("2026-06-01T00:00:00.000Z");
 
@@ -230,5 +231,126 @@ describe("getWeeklyEnrollments", () => {
     expect(sum(base.instructor.id)).toBe(1);
     expect(sum(other.id)).toBe(1);
     expect(sum("all")).toBe(2);
+  });
+});
+
+describe("getContentAnalytics", () => {
+  let n = 0;
+  function makeCourse(instructorId: number, title: string) {
+    return testDb
+      .insert(schema.courses)
+      .values({
+        title,
+        slug: `ct-${++n}`,
+        description: "d",
+        salesCopy: "s",
+        instructorId,
+        categoryId: base.category.id,
+        status: schema.CourseStatus.Published,
+      })
+      .returning()
+      .get();
+  }
+  function makeInstructor() {
+    return testDb
+      .insert(schema.users)
+      .values({ name: "I", email: `ci${++n}@x.com`, role: schema.UserRole.Instructor })
+      .returning()
+      .get();
+  }
+  function makeStudent() {
+    return testDb
+      .insert(schema.users)
+      .values({ name: "S", email: `cs${++n}@x.com`, role: schema.UserRole.Student })
+      .returning()
+      .get();
+  }
+  function enroll(userId: number, courseId: number) {
+    testDb
+      .insert(schema.enrollments)
+      .values({ userId, courseId, enrolledAt: "2026-05-01T00:00:00.000Z" })
+      .run();
+  }
+  function makeModule(courseId: number, position: number) {
+    return testDb
+      .insert(schema.modules)
+      .values({ courseId, title: `M${position}`, position })
+      .returning()
+      .get();
+  }
+  function makeLesson(moduleId: number, title: string, position: number) {
+    return testDb
+      .insert(schema.lessons)
+      .values({ moduleId, title, position })
+      .returning()
+      .get();
+  }
+  function progress(userId: number, lessonId: number, status = schema.LessonProgressStatus.Completed) {
+    testDb.insert(schema.lessonProgress).values({ userId, lessonId, status }).run();
+  }
+
+  it("lists in-scope courses and defaults to the most-enrolled one", () => {
+    const inst = makeInstructor();
+    const small = makeCourse(inst.id, "Small");
+    const big = makeCourse(inst.id, "Big");
+    const s1 = makeStudent();
+    const s2 = makeStudent();
+    enroll(s1.id, small.id);
+    enroll(s1.id, big.id);
+    enroll(s2.id, big.id);
+
+    const result = getContentAnalytics(inst.id, null);
+    expect(result.courses).toEqual([
+      { id: big.id, title: "Big", enrollmentCount: 2 },
+      { id: small.id, title: "Small", enrollmentCount: 1 },
+    ]);
+    expect(result.selectedCourseId).toBe(big.id);
+  });
+
+  it("honours a requested in-scope course and ignores an out-of-scope one", () => {
+    const inst = makeInstructor();
+    const mine = makeCourse(inst.id, "Mine");
+    const mine2 = makeCourse(inst.id, "Mine2");
+    const theirs = makeCourse(makeInstructor().id, "Theirs");
+    enroll(makeStudent().id, mine.id);
+
+    expect(getContentAnalytics(inst.id, mine2.id).selectedCourseId).toBe(mine2.id);
+    expect(getContentAnalytics(inst.id, theirs.id).selectedCourseId).toBe(mine.id);
+  });
+
+  it("returns a funnel in module-then-lesson order counting enrolled completions", () => {
+    const c = makeCourse(base.instructor.id, "Funnel");
+    const m2 = makeModule(c.id, 2);
+    const m1 = makeModule(c.id, 1);
+    const l2b = makeLesson(m2.id, "2b", 2);
+    const l1a = makeLesson(m1.id, "1a", 1);
+    const l2a = makeLesson(m2.id, "2a", 1);
+    const s1 = makeStudent();
+    const s2 = makeStudent();
+    const outsider = makeStudent();
+    enroll(s1.id, c.id);
+    enroll(s2.id, c.id);
+    progress(s1.id, l1a.id);
+    progress(s2.id, l1a.id);
+    progress(s1.id, l2a.id);
+    progress(s2.id, l2a.id, schema.LessonProgressStatus.InProgress);
+    progress(outsider.id, l2b.id);
+
+    const result = getContentAnalytics(base.instructor.id, c.id);
+    expect(result.enrolledStudents).toBe(2);
+    expect(result.funnel).toEqual([
+      { lessonId: l1a.id, title: "1a", completions: 2 },
+      { lessonId: l2a.id, title: "2a", completions: 1 },
+      { lessonId: l2b.id, title: "2b", completions: 0 },
+    ]);
+  });
+
+  it("returns no selection when the scope has no courses", () => {
+    expect(getContentAnalytics(makeInstructor().id, null)).toEqual({
+      courses: [],
+      selectedCourseId: null,
+      enrolledStudents: 0,
+      funnel: [],
+    });
   });
 });
