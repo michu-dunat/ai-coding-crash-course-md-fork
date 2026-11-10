@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `at_risk_threshold_days` integer DEFAULT 14 NOT NULL;

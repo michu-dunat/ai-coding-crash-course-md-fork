@@ -45,6 +45,7 @@ export const users = sqliteTable("users", {
   role: text("role").notNull().$type<UserRole>(),
   avatarUrl: text("avatar_url"),
   bio: text("bio"),
+  atRiskThresholdDays: integer("at_risk_threshold_days").notNull().default(14),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

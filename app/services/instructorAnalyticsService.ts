@@ -402,17 +402,45 @@ export type AtRiskStudent = {
   lastActiveAt: string;
 };
 
-const AT_RISK_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const AT_RISK_LIMIT = 25;
+export const DEFAULT_AT_RISK_THRESHOLD_DAYS = 14;
+export const MIN_AT_RISK_THRESHOLD_DAYS = 3;
+export const MAX_AT_RISK_THRESHOLD_DAYS = 90;
+
+/** The user's saved at-risk threshold in days (14 when the user is unknown). */
+export function getAtRiskThreshold(userId: number): number {
+  const row = db
+    .select({ days: users.atRiskThresholdDays })
+    .from(users)
+    .where(eq(users.id, userId))
+    .get();
+  return row?.days ?? DEFAULT_AT_RISK_THRESHOLD_DAYS;
+}
+
+/** Saves the user's at-risk threshold; throws unless it is an integer in 3–90. */
+export function setAtRiskThreshold(userId: number, days: number): void {
+  if (
+    !Number.isInteger(days) ||
+    days < MIN_AT_RISK_THRESHOLD_DAYS ||
+    days > MAX_AT_RISK_THRESHOLD_DAYS
+  ) {
+    throw new Error(
+      `Threshold must be a whole number of days between ${MIN_AT_RISK_THRESHOLD_DAYS} and ${MAX_AT_RISK_THRESHOLD_DAYS}.`
+    );
+  }
+  db.update(users).set({ atRiskThresholdDays: days }).where(eq(users.id, userId)).run();
+}
 
 /**
  * Enrolled, uncompleted students whose last in-course activity (video events,
  * quiz attempts, comments, lesson completions; enrollment date as fallback)
- * is more than 14 days before `now`. Longest inactivity first, max 25.
+ * is more than `thresholdDays` before `now`. Longest inactivity first, max 25.
  */
 export function getAtRiskStudents(
   scope: AnalyticsScope,
-  now: Date
+  now: Date,
+  thresholdDays: number = DEFAULT_AT_RISK_THRESHOLD_DAYS
 ): AtRiskStudent[] {
   const courseIds = getScopedCourseIds(scope);
   if (courseIds.length === 0) return [];
@@ -497,7 +525,7 @@ export function getAtRiskStudents(
     }
   }
 
-  const cutoff = now.getTime() - AT_RISK_THRESHOLD_MS;
+  const cutoff = now.getTime() - thresholdDays * DAY_MS;
   return enrollmentRows
     .map((e) => {
       const key = `${e.userId}:${e.courseId}`;
