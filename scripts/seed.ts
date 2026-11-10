@@ -12,6 +12,7 @@ import {
   QuestionType,
   TeamMemberRole,
 } from "../app/db/schema";
+import { seedCohort } from "./seedCohort";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1913,8 +1914,58 @@ You've completed the Building REST APIs course. You now have the skills to build
     `Created 1 team with Bossy McBossface as admin, 1 team purchase, and ${seededCoupons.length} coupons (2 redeemed, 3 available).`
   );
 
+  // ─── Generated cohort ───
+  // 40 extra students with ~90 days of deterministic activity for the
+  // instructor dashboard. One lesson loses its duration so the dashboard has
+  // to cope with a missing value.
+  db.update(schema.lessons)
+    .set({ durationMinutes: null })
+    .where(eq(schema.lessons.id, course2LessonIds[course2LessonIds.length - 1]))
+    .run();
+
+  const cohort = seedCohort(db, {
+    now: new Date(),
+    courses: [
+      {
+        id: course1.id,
+        price: course1.price,
+        instructorId: course1.instructorId,
+        lessonIds: course1LessonIds,
+        quizzes: [
+          {
+            id: quiz1.id,
+            passingScore: quiz1.passingScore,
+            options: quiz1OptionIds,
+          },
+          {
+            id: quiz2.id,
+            passingScore: quiz2.passingScore,
+            options: quiz2OptionIds,
+          },
+        ],
+      },
+      {
+        id: course2.id,
+        price: course2.price,
+        instructorId: course2.instructorId,
+        lessonIds: course2LessonIds,
+        quizzes: [
+          {
+            id: quiz3.id,
+            passingScore: quiz3.passingScore,
+            options: quiz3OptionIds,
+          },
+        ],
+      },
+    ],
+  });
+
+  console.log(
+    `Created generated cohort of ${cohort.studentIds.length} students with activity.`
+  );
+
   console.log("\n✓ Seed complete!");
-  console.log("  Users: 9 (1 admin, 2 instructors, 6 students)");
+  console.log("  Users: 49 (1 admin, 2 instructors, 46 students)");
   console.log("  Categories: 5");
   console.log(
     `  Courses: 2 (${course1LessonIds.length} + ${course2LessonIds.length} lessons)`
@@ -1925,6 +1976,7 @@ You've completed the Building REST APIs course. You now have the skills to build
   console.log("  Lesson comments: 15 (4 questions awaiting an answer)");
   console.log("  Purchases: 6 (5 individual + 1 team)");
   console.log("  Teams: 1 (with 5 coupons)");
+  console.log("  Plus the generated cohort (40 students) on top of the counts above");
 }
 
 seed().catch(console.error);
