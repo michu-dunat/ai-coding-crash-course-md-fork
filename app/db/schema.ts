@@ -38,6 +38,9 @@ export enum TeamMemberRole {
 
 // ─── Tables ───
 
+/** Days of inactivity before a student is at risk, until the instructor changes it. */
+export const DEFAULT_AT_RISK_THRESHOLD_DAYS = 14;
+
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -45,7 +48,7 @@ export const users = sqliteTable("users", {
   role: text("role").notNull().$type<UserRole>(),
   avatarUrl: text("avatar_url"),
   bio: text("bio"),
-  atRiskThresholdDays: integer("at_risk_threshold_days").notNull().default(14),
+  atRiskThresholdDays: integer("at_risk_threshold_days").notNull().default(DEFAULT_AT_RISK_THRESHOLD_DAYS),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

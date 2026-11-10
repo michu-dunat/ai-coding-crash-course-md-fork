@@ -157,12 +157,14 @@ export async function requireInstructorOrAdmin(request: Request) {
   const userId = await requireUserId(request);
   const user = getUserById(userId);
 
-  if (
-    !user ||
-    (user.role !== UserRole.Instructor && user.role !== UserRole.Admin)
-  ) {
+  if (!user || !isInstructorOrAdmin(user)) {
     throw data("Only instructors can access this page.", { status: 403 });
   }
 
   return { userId, user, isAdmin: user.role === UserRole.Admin };
+}
+
+/** The role check behind requireInstructorOrAdmin, for pages that branch on it instead of rejecting. */
+export function isInstructorOrAdmin(user: { role: UserRole } | undefined): boolean {
+  return user?.role === UserRole.Instructor || user?.role === UserRole.Admin;
 }

@@ -11,10 +11,11 @@ import { CourseImage } from "~/components/course-image";
 import { data, isRouteErrorResponse } from "react-router";
 import { getUserById, getUsersByRole } from "~/services/userService";
 import { getHardestQuestions } from "~/services/hardestQuestionsService";
+import { getAtRiskThreshold, setAtRiskThreshold } from "~/services/atRiskThresholdService";
+import { isInstructorOrAdmin, requireInstructorOrAdmin } from "~/lib/access.server";
+import { parsePositiveIntQueryParam } from "~/lib/validation";
 import {
   getAtRiskStudents,
-  getAtRiskThreshold,
-  setAtRiskThreshold,
   getOverviewStats,
   getCourseBreakdown,
   getOverviewRating,
@@ -35,24 +36,8 @@ export function meta() {
   ];
 }
 
-function parseInstructorId(request: Request): number | null {
-  const param = Number(new URL(request.url).searchParams.get("instructorId"));
-  return Number.isInteger(param) && param > 0 ? param : null;
-}
-
 export async function action({ request }: Route.ActionArgs) {
-  const currentUserId = await getCurrentUserId(request);
-  if (!currentUserId) {
-    throw data("Select a user from the DevUI panel to view your dashboard.", {
-      status: 401,
-    });
-  }
-  const role = getUserById(currentUserId)?.role;
-  if (role !== UserRole.Instructor && role !== UserRole.Admin) {
-    throw data("Only instructors and admins can change the at-risk threshold.", {
-      status: 403,
-    });
-  }
+  const { userId: currentUserId, isAdmin } = await requireInstructorOrAdmin(request);
 
   const form = await request.formData();
   if (form.get("intent") !== "set-at-risk-threshold") {
@@ -60,7 +45,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
   // Only the current user's own threshold can change. Reject any attempt to
   // target someone else, whether via the URL scope or a crafted form field.
-  const viewedId = role === UserRole.Admin ? parseInstructorId(request) : null;
+  const viewedId = isAdmin ? parsePositiveIntQueryParam(request, "instructorId") : null;
   const targetField = form.get("userId");
   if (
     (viewedId !== null && viewedId !== currentUserId) ||
@@ -95,21 +80,21 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const currentUser = getUserById(currentUserId);
-  const role = currentUser?.role;
 
-  if (role === UserRole.Instructor || role === UserRole.Admin) {
-    const isAdmin = role === UserRole.Admin;
+  if (isInstructorOrAdmin(currentUser)) {
+    const isAdmin = currentUser?.role === UserRole.Admin;
+    const now = new Date();
     // Instructors are always scoped to themselves; the filter is admin-only.
-    const selectedInstructorId = isAdmin ? parseInstructorId(request) : null;
+    const selectedInstructorId = isAdmin
+      ? parsePositiveIntQueryParam(request, "instructorId")
+      : null;
     // The threshold belongs to the viewed instructor; admins edit only their own.
     const thresholdUserId = selectedInstructorId ?? currentUserId;
     const thresholdDays = getAtRiskThreshold(thresholdUserId);
     const scope: AnalyticsScope = isAdmin
       ? (selectedInstructorId ?? "all")
       : currentUserId;
-    const courseParam = Number(new URL(request.url).searchParams.get("courseId"));
-    const requestedCourseId =
-      Number.isInteger(courseParam) && courseParam > 0 ? courseParam : null;
+    const requestedCourseId = parsePositiveIntQueryParam(request, "courseId");
     const instructors = isAdmin
       ? getUsersByRole(UserRole.Instructor).map((u) => ({ id: u.id, name: u.name }))
       : [];
@@ -119,18 +104,18 @@ export async function loader({ request }: Route.LoaderArgs) {
       isAdmin,
       instructors,
       selectedInstructorId,
-      overview: getOverviewStats(scope, new Date()),
+      overview: getOverviewStats(scope, now),
       courseBreakdown: getCourseBreakdown(scope),
       overviewRating: getOverviewRating(scope),
       unansweredQuestions: getUnansweredQuestionCount(scope),
-      weeklyEnrollments: getWeeklyEnrollments(scope, new Date()),
-      revenue: getRevenueStats(scope, new Date()),
+      weeklyEnrollments: getWeeklyEnrollments(scope, now),
+      revenue: getRevenueStats(scope, now),
       content,
       videoDropoff:
         content.selectedCourseId === null ? [] : getVideoDropoff(scope, content.selectedCourseId),
       hardestQuestions:
         content.selectedCourseId === null ? [] : getHardestQuestions(scope, content.selectedCourseId),
-      atRisk: getAtRiskStudents(scope, new Date(), thresholdDays),
+      atRisk: getAtRiskStudents(scope, now, thresholdDays),
       atRiskThreshold: {
         days: thresholdDays,
         editable: thresholdUserId === currentUserId,

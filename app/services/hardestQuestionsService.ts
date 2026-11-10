@@ -8,7 +8,7 @@ import {
   quizQuestions,
   quizzes,
 } from "~/db/schema";
-import { getScopedCourseIds, type AnalyticsScope } from "~/services/instructorAnalyticsService";
+import { getScopedCourseIds, type AnalyticsScope } from "~/services/instructorAnalytics/scope";
 
 export type HardQuestion = {
   questionId: number;

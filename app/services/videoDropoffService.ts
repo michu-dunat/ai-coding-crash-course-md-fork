@@ -1,7 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { db } from "~/db";
 import { enrollments, lessons, modules, videoWatchEvents } from "~/db/schema";
-import { getScopedCourseIds, type AnalyticsScope } from "~/services/instructorAnalyticsService";
+import { getScopedCourseIds, type AnalyticsScope } from "~/services/instructorAnalytics/scope";
 
 export type DropoffStep = {
   /** 10, 20, … 100 — share of the lesson duration */

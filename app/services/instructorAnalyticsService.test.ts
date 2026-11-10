@@ -11,15 +11,16 @@ vi.mock("~/db", () => ({
   },
 }));
 
-import { getAtRiskStudents, getOverviewStats } from "~/services/instructorAnalyticsService";
-import { getWeeklyEnrollments } from "~/services/instructorAnalyticsService";
-import { getContentAnalytics } from "~/services/instructorAnalyticsService";
-import { getAtRiskThreshold, setAtRiskThreshold } from "~/services/instructorAnalyticsService";
 import {
+  getAtRiskStudents,
+  getContentAnalytics,
   getCourseBreakdown,
   getOverviewRating,
+  getOverviewStats,
   getUnansweredQuestionCount,
+  getWeeklyEnrollments,
 } from "~/services/instructorAnalyticsService";
+import { getAtRiskThreshold, setAtRiskThreshold } from "~/services/atRiskThresholdService";
 
 const NOW = new Date("2026-06-01T00:00:00.000Z");
 

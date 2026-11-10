@@ -52,6 +52,17 @@ export function parseParams<T extends z.ZodType>(
 }
 
 /**
+ * Reads an optional positive-integer query parameter. Missing or malformed
+ * values yield null, so a stale link falls back to the default view.
+ */
+export function parsePositiveIntQueryParam(request: Request, name: string): number | null {
+  const raw = new URL(request.url).searchParams.get(name);
+  if (raw === null || raw.trim() === "") return null;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/**
  * Parses a JSON request body with a Zod schema.
  * Returns either the parsed data or a field-error map (first error per field).
  */
