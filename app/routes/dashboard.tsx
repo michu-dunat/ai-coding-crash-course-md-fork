@@ -10,7 +10,19 @@ import { AlertTriangle, BookOpen, CheckCircle2, GraduationCap, PlayCircle } from
 import { CourseImage } from "~/components/course-image";
 import { data, isRouteErrorResponse } from "react-router";
 import { getUserById, getUsersByRole } from "~/services/userService";
-import { getAtRiskStudents, getAtRiskThreshold, setAtRiskThreshold, getOverviewStats, getRevenueStats, getWeeklyEnrollments, getContentAnalytics, type AnalyticsScope } from "~/services/instructorAnalyticsService";
+import {
+  getAtRiskStudents,
+  getAtRiskThreshold,
+  setAtRiskThreshold,
+  getOverviewStats,
+  getCourseBreakdown,
+  getOverviewRating,
+  getUnansweredQuestionCount,
+  getRevenueStats,
+  getWeeklyEnrollments,
+  getContentAnalytics,
+  type AnalyticsScope,
+} from "~/services/instructorAnalyticsService";
 import { UserRole } from "~/db/schema";
 import { InstructorAnalyticsDashboard } from "~/components/instructor-analytics-dashboard";
 
@@ -89,10 +101,10 @@ export async function loader({ request }: Route.LoaderArgs) {
     const selectedInstructorId = isAdmin ? parseInstructorId(request) : null;
     // The threshold belongs to the viewed instructor; admins edit only their own.
     const thresholdUserId = selectedInstructorId ?? currentUserId;
+    const thresholdDays = getAtRiskThreshold(thresholdUserId);
     const scope: AnalyticsScope = isAdmin
       ? (selectedInstructorId ?? "all")
       : currentUserId;
-    const thresholdDays = getAtRiskThreshold(thresholdUserId);
     const courseParam = Number(new URL(request.url).searchParams.get("courseId"));
     const requestedCourseId =
       Number.isInteger(courseParam) && courseParam > 0 ? courseParam : null;
@@ -105,6 +117,9 @@ export async function loader({ request }: Route.LoaderArgs) {
       instructors,
       selectedInstructorId,
       overview: getOverviewStats(scope, new Date()),
+      courseBreakdown: getCourseBreakdown(scope),
+      overviewRating: getOverviewRating(scope),
+      unansweredQuestions: getUnansweredQuestionCount(scope),
       weeklyEnrollments: getWeeklyEnrollments(scope, new Date()),
       revenue: getRevenueStats(scope, new Date()),
       content: getContentAnalytics(scope, requestedCourseId),
