@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -1964,19 +1965,41 @@ You've completed the Building REST APIs course. You now have the skills to build
     `Created generated cohort of ${cohort.studentIds.length} students with activity.`
   );
 
+  printSummary();
+}
+
+/** Totals read back from the database, so they can't drift from the data above. */
+function printSummary() {
+  const total = (table: SQLiteTable) => db.select({ n: count() }).from(table).get()?.n ?? 0;
+  const users = db.select({ role: schema.users.role }).from(schema.users).all();
+  const byRole = (role: schema.UserRole) => users.filter((u) => u.role === role).length;
+  // A team purchase is one whose seats were issued as coupons.
+  const teamPurchases = new Set(
+    db
+      .select({ purchaseId: schema.coupons.purchaseId })
+      .from(schema.coupons)
+      .all()
+      .map((c) => c.purchaseId)
+  ).size;
+  const purchaseCount = total(schema.purchases);
+
   console.log("\n✓ Seed complete!");
-  console.log("  Users: 49 (1 admin, 2 instructors, 46 students)");
-  console.log("  Categories: 5");
   console.log(
-    `  Courses: 2 (${course1LessonIds.length} + ${course2LessonIds.length} lessons)`
+    `  Users: ${users.length} (${byRole(schema.UserRole.Admin)} admin, ${byRole(schema.UserRole.Instructor)} instructors, ${byRole(schema.UserRole.Student)} students)`
   );
-  console.log("  Quizzes: 3");
-  console.log("  Enrollments: 7");
-  console.log("  Course ratings: 6");
-  console.log("  Lesson comments: 15 (4 questions awaiting an answer)");
-  console.log("  Purchases: 6 (5 individual + 1 team)");
-  console.log("  Teams: 1 (with 5 coupons)");
-  console.log("  Plus the generated cohort (40 students) on top of the counts above");
+  console.log(`  Categories: ${total(schema.categories)}`);
+  console.log(`  Courses: ${total(schema.courses)} (${total(schema.lessons)} lessons)`);
+  console.log(`  Quizzes: ${total(schema.quizzes)}`);
+  console.log(`  Enrollments: ${total(schema.enrollments)}`);
+  console.log(`  Course ratings: ${total(schema.courseRatings)}`);
+  console.log(`  Lesson comments: ${total(schema.comments)}`);
+  console.log(`  Lesson progress records: ${total(schema.lessonProgress)}`);
+  console.log(`  Quiz attempts: ${total(schema.quizAttempts)}`);
+  console.log(`  Video watch events: ${total(schema.videoWatchEvents)}`);
+  console.log(
+    `  Purchases: ${purchaseCount} (${purchaseCount - teamPurchases} individual + ${teamPurchases} team)`
+  );
+  console.log(`  Teams: ${total(schema.teams)} (with ${total(schema.coupons)} coupons)`);
 }
 
 seed().catch(console.error);
