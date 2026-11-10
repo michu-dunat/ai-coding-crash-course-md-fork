@@ -127,10 +127,10 @@ export async function loader({ request }: Route.LoaderArgs) {
       revenue: getRevenueStats(scope, new Date()),
       content,
       videoDropoff:
-        content.selectedCourseId === null ? [] : getVideoDropoff(content.selectedCourseId),
+        content.selectedCourseId === null ? [] : getVideoDropoff(scope, content.selectedCourseId),
       hardestQuestions:
-        content.selectedCourseId === null ? [] : getHardestQuestions(content.selectedCourseId),
-      atRiskStudents: getAtRiskStudents(scope, new Date(), thresholdDays),
+        content.selectedCourseId === null ? [] : getHardestQuestions(scope, content.selectedCourseId),
+      atRisk: getAtRiskStudents(scope, new Date(), thresholdDays),
       atRiskThreshold: {
         days: thresholdDays,
         editable: thresholdUserId === currentUserId,

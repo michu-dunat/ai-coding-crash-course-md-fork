@@ -1,8 +1,8 @@
 import { Link, useFetcher, useSearchParams } from "react-router";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, Users } from "lucide-react";
 import { WeeklyEnrollmentChart } from "~/components/weekly-enrollment-chart";
 import type {
-  AtRiskStudent,
+  AtRiskResult,
   ContentAnalytics,
   CourseBreakdownRow,
   OverviewStats,
@@ -42,7 +42,7 @@ type Props = {
   content: ContentAnalytics;
   videoDropoff: LessonVideoDropoff[];
   hardestQuestions: HardQuestion[];
-  atRiskStudents: AtRiskStudent[];
+  atRisk: AtRiskResult;
   atRiskThreshold: { days: number; editable: boolean };
 };
 
@@ -82,7 +82,16 @@ function AtRiskThresholdControl({ days, editable }: { days: number; editable: bo
   );
 }
 
-function AtRiskList({ students, days }: { students: AtRiskStudent[]; days: number }) {
+function AtRiskList({
+  atRisk: { students, total },
+  days,
+  rostersHref,
+}: {
+  atRisk: AtRiskResult;
+  days: number;
+  /** Where every course (and so every roster) is listed for this viewer */
+  rostersHref: string;
+}) {
   if (students.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
@@ -128,6 +137,14 @@ function AtRiskList({ students, days }: { students: AtRiskStudent[]; days: numbe
             ))}
           </tbody>
         </table>
+        {total > students.length && (
+          <p className="mt-4 text-sm text-muted-foreground">
+            Showing the {students.length} longest-inactive of {total} at-risk students.{" "}
+            <Link to={rostersHref} className="text-primary hover:underline">
+              View the full rosters
+            </Link>
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -200,10 +217,23 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
-function Placeholder({ title }: { title: string }) {
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  children,
+}: {
+  icon: typeof BarChart3;
+  title: string;
+  description: string;
+  children?: React.ReactNode;
+}) {
   return (
-    <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-      {title} analytics are coming soon.
+    <div className="rounded-lg border border-dashed p-12 text-center">
+      <Icon className="mx-auto mb-4 size-12 text-muted-foreground/50" />
+      <h2 className="text-lg font-medium">{title}</h2>
+      <p className="mb-4 text-sm text-muted-foreground">{description}</p>
+      {children}
     </div>
   );
 }
@@ -221,7 +251,7 @@ export function InstructorAnalyticsDashboard({
   content,
   videoDropoff,
   hardestQuestions,
-  atRiskStudents,
+  atRisk,
   atRiskThreshold,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -265,17 +295,28 @@ export function InstructorAnalyticsDashboard({
         )}
       </div>
 
-      {overview.courseCount === 0 && !isAdmin ? (
-        <div className="rounded-lg border border-dashed p-12 text-center">
-          <BarChart3 className="mx-auto mb-4 size-12 text-muted-foreground/50" />
-          <h2 className="text-lg font-medium">No courses yet</h2>
-          <p className="mb-4 text-sm text-muted-foreground">
-            Publish a course to start seeing analytics.
-          </p>
-          <Link to="/instructor/new">
-            <Button>Create a course</Button>
-          </Link>
-        </div>
+      {overview.courseCount === 0 ? (
+        isAdmin ? (
+          <EmptyState
+            icon={BarChart3}
+            title="No courses to show"
+            description={
+              selectedInstructorId === null
+                ? "No instructor has published a course yet."
+                : "This instructor has no published courses yet."
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={BarChart3}
+            title="No courses yet"
+            description="Publish a course to start seeing analytics."
+          >
+            <Link to="/instructor/new">
+              <Button>Create a course</Button>
+            </Link>
+          </EmptyState>
+        )
       ) : (
         <Tabs defaultValue={searchParams.has("courseId") ? "content" : "overview"}>
           <TabsList>
@@ -285,6 +326,13 @@ export function InstructorAnalyticsDashboard({
             <TabsTrigger value="revenue">Revenue</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="mt-6">
+            {overview.uniqueStudents === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No students yet"
+                description="Stats appear here once students enroll in your courses."
+              />
+            ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
                 label="Unique students"
@@ -315,6 +363,7 @@ export function InstructorAnalyticsDashboard({
                 />
               </Link>
             </div>
+            )}
             <h2 className="mb-3 mt-8 text-lg font-semibold">Courses</h2>
             <CourseBreakdownTable rows={courseBreakdown} />
           </TabsContent>
@@ -322,7 +371,11 @@ export function InstructorAnalyticsDashboard({
             <div className="space-y-6">
               <WeeklyEnrollmentChart weeks={weeklyEnrollments} />
               <AtRiskThresholdControl {...atRiskThreshold} />
-              <AtRiskList students={atRiskStudents} days={atRiskThreshold.days} />
+              <AtRiskList
+                atRisk={atRisk}
+                days={atRiskThreshold.days}
+                rostersHref={isAdmin ? "/admin/courses" : "/instructor"}
+              />
             </div>
           </TabsContent>
           <TabsContent value="content" className="mt-6">

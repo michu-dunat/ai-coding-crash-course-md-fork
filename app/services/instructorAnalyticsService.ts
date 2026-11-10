@@ -398,8 +398,15 @@ export type AtRiskStudent = {
   courseTitle: string;
   /** 0–100 share of the course's lessons completed */
   progress: number;
-  /** ISO timestamp of the latest in-course activity, or the enrollment date */
+  /** ISO timestamp of the latest in-course activity; the enrollment date only when there is none */
   lastActiveAt: string;
+};
+
+export type AtRiskResult = {
+  /** Longest inactivity first, capped at AT_RISK_LIMIT */
+  students: AtRiskStudent[];
+  /** Every at-risk enrollment before the cap; above students.length means truncated */
+  total: number;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -435,15 +442,17 @@ export function setAtRiskThreshold(userId: number, days: number): void {
 /**
  * Enrolled, uncompleted students whose last in-course activity (video events,
  * quiz attempts, comments, lesson completions; enrollment date as fallback)
- * is more than `thresholdDays` before `now`. Longest inactivity first, max 25.
+ * is more than `thresholdDays` before `now`. Longest inactivity first, max 25,
+ * with the uncapped total alongside.
  */
 export function getAtRiskStudents(
   scope: AnalyticsScope,
   now: Date,
   thresholdDays: number = DEFAULT_AT_RISK_THRESHOLD_DAYS
-): AtRiskStudent[] {
+): AtRiskResult {
+  const none: AtRiskResult = { students: [], total: 0 };
   const courseIds = getScopedCourseIds(scope);
-  if (courseIds.length === 0) return [];
+  if (courseIds.length === 0) return none;
 
   const enrollmentRows = db
     .select({
@@ -460,7 +469,7 @@ export function getAtRiskStudents(
       and(inArray(enrollments.courseId, courseIds), isNull(enrollments.completedAt))
     )
     .all();
-  if (enrollmentRows.length === 0) return [];
+  if (enrollmentRows.length === 0) return none;
 
   const lessonRows = db
     .select({ lessonId: lessons.id, courseId: modules.courseId })
@@ -526,10 +535,10 @@ export function getAtRiskStudents(
   }
 
   const cutoff = now.getTime() - thresholdDays * DAY_MS;
-  return enrollmentRows
+  const atRisk = enrollmentRows
     .map((e) => {
       const key = `${e.userId}:${e.courseId}`;
-      const t = Math.max(new Date(e.enrolledAt).getTime(), lastActive.get(key) ?? -Infinity);
+      const t = lastActive.get(key) ?? new Date(e.enrolledAt).getTime();
       const total = lessonsPerCourse.get(e.courseId) ?? 0;
       const done = completedCount.get(key) ?? 0;
       return {
@@ -545,9 +554,11 @@ export function getAtRiskStudents(
       };
     })
     .filter((r) => r.t < cutoff)
-    .sort((a, b) => a.t - b.t)
-    .slice(0, AT_RISK_LIMIT)
-    .map((r) => r.row);
+    .sort((a, b) => a.t - b.t);
+  return {
+    students: atRisk.slice(0, AT_RISK_LIMIT).map((r) => r.row),
+    total: atRisk.length,
+  };
 }
 
 

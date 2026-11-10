@@ -97,7 +97,7 @@ describe("getHardestQuestions", () => {
     const q = makeQuestion(lesson.id, "What is 2+2?");
     answer(q, [false, false, false, true]);
 
-    expect(getHardestQuestions(course.id)).toEqual([
+    expect(getHardestQuestions(base.instructor.id, course.id)).toEqual([
       {
         questionId: q.question.id,
         questionText: "What is 2+2?",
@@ -118,7 +118,7 @@ describe("getHardestQuestions", () => {
     const elsewhere = makeQuestion(makeLesson(makeCourse().id, "X").id, "Elsewhere");
     answer(elsewhere, [false, false, false]);
 
-    expect(getHardestQuestions(course.id).map((q) => q.questionText)).toEqual(["Enough"]);
+    expect(getHardestQuestions(base.instructor.id, course.id).map((q) => q.questionText)).toEqual(["Enough"]);
   });
 
   it("orders by wrong-answer rate, highest first", () => {
@@ -128,7 +128,7 @@ describe("getHardestQuestions", () => {
     answer(makeQuestion(lesson.id, "Hard"), [false, false, false]);
     answer(makeQuestion(lesson.id, "Medium"), [false, true, true]);
 
-    expect(getHardestQuestions(course.id).map((q) => q.questionText)).toEqual([
+    expect(getHardestQuestions(base.instructor.id, course.id).map((q) => q.questionText)).toEqual([
       "Hard",
       "Medium",
       "Easy",
@@ -146,8 +146,21 @@ describe("getHardestQuestions", () => {
       );
     }
 
-    expect(getHardestQuestions(course.id).map((q) => q.questionText)).toEqual(
+    expect(getHardestQuestions(base.instructor.id, course.id).map((q) => q.questionText)).toEqual(
       ["Q11", "Q10", "Q9", "Q8", "Q7", "Q6", "Q5", "Q4", "Q3", "Q2"]
     );
+  });
+
+  it("returns nothing for a course outside the scope", () => {
+    const course = makeCourse();
+    answer(makeQuestion(makeLesson(course.id, "L").id, "Hard"), [false, false, false]);
+    const outsider = testDb
+      .insert(schema.users)
+      .values({ name: "Other", email: "other-hq@x.com", role: schema.UserRole.Instructor })
+      .returning()
+      .get();
+
+    expect(getHardestQuestions(outsider.id, course.id)).toEqual([]);
+    expect(getHardestQuestions("all", course.id)).toHaveLength(1);
   });
 });

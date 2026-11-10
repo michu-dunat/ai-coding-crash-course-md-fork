@@ -8,6 +8,7 @@ import {
   quizQuestions,
   quizzes,
 } from "~/db/schema";
+import { getScopedCourseIds, type AnalyticsScope } from "~/services/instructorAnalyticsService";
 
 export type HardQuestion = {
   questionId: number;
@@ -23,9 +24,10 @@ const LIMIT = 10;
 
 /**
  * The hardest quiz questions in a course: highest wrong-answer rate first,
- * across all attempts.
+ * across all attempts. Returns nothing when the course is outside `scope`.
  */
-export function getHardestQuestions(courseId: number): HardQuestion[] {
+export function getHardestQuestions(scope: AnalyticsScope, courseId: number): HardQuestion[] {
+  if (!getScopedCourseIds(scope).includes(courseId)) return [];
   const rows = db
     .select({
       questionId: quizQuestions.id,

@@ -26,7 +26,7 @@ export function VideoDropoffCard({ lessons }: { lessons: LessonVideoDropoff[] })
         {lessons.length === 0 ? (
           <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
             <PlayCircle className="mx-auto mb-4 size-10 text-muted-foreground/50" />
-            No video watch events for this course yet.
+            This course has no lessons yet.
           </div>
         ) : (
           lessons.map((lesson) => (

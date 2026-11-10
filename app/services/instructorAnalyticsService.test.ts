@@ -379,7 +379,7 @@ describe("getAtRiskStudents", () => {
     const edge = student("Edge");
     enroll(old.id, base.course.id, "2026-05-17T23:59:59.999Z");
     enroll(edge.id, base.course.id, "2026-05-18T00:00:00.000Z"); // exactly 14 days
-    expect(getAtRiskStudents(base.instructor.id, NOW)).toEqual([
+    expect(getAtRiskStudents(base.instructor.id, NOW).students).toEqual([
       {
         userId: old.id,
         name: "Old",
@@ -429,11 +429,20 @@ describe("getAtRiskStudents", () => {
       enroll(stale.id, base.course.id, OLD);
       record(active.id, l.id, RECENT);
       record(stale.id, l.id, STALE);
-      const rows = getAtRiskStudents(base.instructor.id, NOW);
+      const rows = getAtRiskStudents(base.instructor.id, NOW).students;
       expect(rows.map((r) => r.userId)).toEqual([stale.id]);
       expect(rows[0].lastActiveAt).toBe(STALE);
     });
   }
+
+  it("uses the latest activity even when it predates the enrollment date", () => {
+    const l = lesson();
+    const s = student();
+    enroll(s.id, base.course.id, RECENT);
+    sources.comments(s.id, l.id, STALE);
+    const rows = getAtRiskStudents(base.instructor.id, NOW).students;
+    expect(rows.map((r) => [r.userId, r.lastActiveAt])).toEqual([[s.id, STALE]]);
+  });
 
   it("ignores activity in other courses", () => {
     const other = testDb
@@ -446,7 +455,7 @@ describe("getAtRiskStudents", () => {
     const s = student();
     enroll(s.id, base.course.id, OLD);
     sources.comments(s.id, l.id, RECENT);
-    expect(getAtRiskStudents(base.instructor.id, NOW).map((r) => [r.userId, r.courseId])).toEqual([
+    expect(getAtRiskStudents(base.instructor.id, NOW).students.map((r) => [r.userId, r.courseId])).toEqual([
       [s.id, base.course.id],
     ]);
   });
@@ -457,12 +466,12 @@ describe("getAtRiskStudents", () => {
     const s = student();
     enroll(s.id, base.course.id, OLD);
     sources["lesson completions"](s.id, a.id, STALE);
-    expect(getAtRiskStudents(base.instructor.id, NOW)[0].progress).toBe(50);
+    expect(getAtRiskStudents(base.instructor.id, NOW).students[0].progress).toBe(50);
   });
 
   it("never lists students who completed the course", () => {
     enroll(student().id, base.course.id, OLD, "2026-02-01T00:00:00.000Z");
-    expect(getAtRiskStudents(base.instructor.id, NOW)).toEqual([]);
+    expect(getAtRiskStudents(base.instructor.id, NOW).students).toEqual([]);
   });
 
   it("sorts by longest inactivity first and caps at 25", () => {
@@ -473,9 +482,10 @@ describe("getAtRiskStudents", () => {
       // i = 0 is the most recently enrolled, i = 29 the oldest
       enroll(s.id, base.course.id, new Date(Date.UTC(2026, 3, 30 - i)).toISOString());
     }
-    const rows = getAtRiskStudents(base.instructor.id, NOW);
+    const { students: rows, total } = getAtRiskStudents(base.instructor.id, NOW);
     expect(rows).toHaveLength(25);
     expect(rows.map((r) => r.userId)).toEqual(ids.slice(5).reverse());
+    expect(total).toBe(30);
   });
 
   it("respects instructor scope and 'all'", () => {
@@ -493,9 +503,9 @@ describe("getAtRiskStudents", () => {
     const theirs = student();
     enroll(mine.id, base.course.id, OLD);
     enroll(theirs.id, otherCourse.id, OLD);
-    expect(getAtRiskStudents(base.instructor.id, NOW).map((r) => r.userId)).toEqual([mine.id]);
-    expect(getAtRiskStudents(other.id, NOW).map((r) => r.userId)).toEqual([theirs.id]);
-    expect(getAtRiskStudents("all", NOW)).toHaveLength(2);
+    expect(getAtRiskStudents(base.instructor.id, NOW).students.map((r) => r.userId)).toEqual([mine.id]);
+    expect(getAtRiskStudents(other.id, NOW).students.map((r) => r.userId)).toEqual([theirs.id]);
+    expect(getAtRiskStudents("all", NOW).students).toHaveLength(2);
   });
 });
 
@@ -691,7 +701,7 @@ describe("at-risk threshold", () => {
       .insert(schema.enrollments)
       .values({ userId: s.id, courseId: base.course.id, enrolledAt: "2026-05-27T00:00:00.000Z" })
       .run();
-    expect(getAtRiskStudents(base.instructor.id, NOW, 14)).toEqual([]);
-    expect(getAtRiskStudents(base.instructor.id, NOW, 3).map((r) => r.userId)).toEqual([s.id]);
+    expect(getAtRiskStudents(base.instructor.id, NOW, 14).students).toEqual([]);
+    expect(getAtRiskStudents(base.instructor.id, NOW, 3).students.map((r) => r.userId)).toEqual([s.id]);
   });
 });

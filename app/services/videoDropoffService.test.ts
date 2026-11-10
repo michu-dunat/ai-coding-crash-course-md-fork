@@ -46,35 +46,67 @@ function makeLesson(courseId: number, title: string, durationMinutes: number | n
     .returning()
     .get();
 }
-function makeStudent() {
-  return testDb
+function makeStudent(enrolledInCourseId?: number) {
+  const user = testDb
     .insert(schema.users)
     .values({ name: "S", email: `vd${++n}@x.com`, role: schema.UserRole.Student })
     .returning()
     .get();
+  if (enrolledInCourseId !== undefined) {
+    testDb.insert(schema.enrollments).values({ userId: user.id, courseId: enrolledInCourseId }).run();
+  }
+  return user;
 }
 function watch(userId: number, lessonId: number, positionSeconds: number, eventType = "progress") {
   testDb.insert(schema.videoWatchEvents).values({ userId, lessonId, positionSeconds, eventType }).run();
 }
 
 describe("getVideoDropoff", () => {
-  it("returns an empty list when no lesson has watch events", () => {
+  it("returns every lesson, with zero watchers when nobody has watched", () => {
     const c = makeCourse();
-    makeLesson(c.id, "L", 10);
-    expect(getVideoDropoff(c.id)).toEqual([]);
+    const l = makeLesson(c.id, "L", 10);
+    const unwatchedNoDuration = makeLesson(c.id, "No dur", null, 2);
+    expect(getVideoDropoff(base.instructor.id, c.id)).toEqual([
+      {
+        lessonId: l.id,
+        title: "L",
+        watchers: 0,
+        steps: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((percent) => ({ percent, share: 0 })),
+      },
+      { lessonId: unwatchedNoDuration.id, title: "No dur", watchers: 0, steps: null },
+    ]);
+  });
+
+  it("counts only enrolled students as watchers", () => {
+    const c = makeCourse();
+    const l = makeLesson(c.id, "L", 1);
+    watch(makeStudent(c.id).id, l.id, 60);
+    watch(makeStudent().id, l.id, 6);
+    const [row] = getVideoDropoff(base.instructor.id, c.id);
+    expect(row.watchers).toBe(1);
+    expect(row.steps!.at(-1)).toEqual({ percent: 100, share: 100 });
+  });
+
+  it("returns nothing for a course outside the scope", () => {
+    const c = makeCourse();
+    const l = makeLesson(c.id, "L", 1);
+    watch(makeStudent(c.id).id, l.id, 60);
+    const outsider = makeStudent();
+    expect(getVideoDropoff(outsider.id, c.id)).toEqual([]);
+    expect(getVideoDropoff("all", c.id)).toHaveLength(1);
   });
 
   it("buckets each student's furthest position into 10% steps, regardless of event type", () => {
     const c = makeCourse();
     const l = makeLesson(c.id, "L", 10); // 600s
-    const a = makeStudent();
-    const b = makeStudent();
+    const a = makeStudent(c.id);
+    const b = makeStudent(c.id);
     // a: furthest 330s (55%) via a pause; a later, earlier-position play is ignored
     watch(a.id, l.id, 330, "pause");
     watch(a.id, l.id, 60, "play");
     // b: furthest 125s (~20.8%)
     watch(b.id, l.id, 125, "seek");
-    const [row] = getVideoDropoff(c.id);
+    const [row] = getVideoDropoff(base.instructor.id, c.id);
     expect(row.lessonId).toBe(l.id);
     expect(row.watchers).toBe(2);
     expect(row.steps).toEqual([
@@ -94,16 +126,16 @@ describe("getVideoDropoff", () => {
   it("counts positions beyond the duration as 100%", () => {
     const c = makeCourse();
     const l = makeLesson(c.id, "L", 1); // 60s
-    watch(makeStudent().id, l.id, 999);
-    const [row] = getVideoDropoff(c.id);
+    watch(makeStudent(c.id).id, l.id, 999);
+    const [row] = getVideoDropoff(base.instructor.id, c.id);
     expect(row.steps!.at(-1)).toEqual({ percent: 100, share: 100 });
   });
 
   it("marks watched lessons without a duration instead of charting them", () => {
     const c = makeCourse();
     const l = makeLesson(c.id, "No dur", null);
-    watch(makeStudent().id, l.id, 30);
-    expect(getVideoDropoff(c.id)).toEqual([
+    watch(makeStudent(c.id).id, l.id, 30);
+    expect(getVideoDropoff(base.instructor.id, c.id)).toEqual([
       { lessonId: l.id, title: "No dur", watchers: 1, steps: null },
     ]);
   });
@@ -114,10 +146,10 @@ describe("getVideoDropoff", () => {
     const second = makeLesson(c.id, "Second", 5, 2);
     const first = makeLesson(c.id, "First", 5, 1);
     const foreign = makeLesson(other.id, "Foreign", 5);
-    const s = makeStudent();
+    const s = makeStudent(c.id);
     watch(s.id, second.id, 10);
     watch(s.id, first.id, 10);
     watch(s.id, foreign.id, 10);
-    expect(getVideoDropoff(c.id).map((r) => r.title)).toEqual(["First", "Second"]);
+    expect(getVideoDropoff(base.instructor.id, c.id).map((r) => r.title)).toEqual(["First", "Second"]);
   });
 });
