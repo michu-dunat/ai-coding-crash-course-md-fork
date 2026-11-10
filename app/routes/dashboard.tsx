@@ -9,6 +9,10 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { AlertTriangle, BookOpen, CheckCircle2, GraduationCap, PlayCircle } from "lucide-react";
 import { CourseImage } from "~/components/course-image";
 import { data, isRouteErrorResponse } from "react-router";
+import { getUserById, getUsersByRole } from "~/services/userService";
+import { getOverviewStats, type AnalyticsScope } from "~/services/instructorAnalyticsService";
+import { UserRole } from "~/db/schema";
+import { InstructorAnalyticsDashboard } from "~/components/instructor-analytics-dashboard";
 
 export function meta() {
   return [
@@ -24,6 +28,32 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw data("Select a user from the DevUI panel to view your dashboard.", {
       status: 401,
     });
+  }
+
+  const currentUser = getUserById(currentUserId);
+  const role = currentUser?.role;
+
+  if (role === UserRole.Instructor || role === UserRole.Admin) {
+    const isAdmin = role === UserRole.Admin;
+    // Instructors are always scoped to themselves; the filter is admin-only.
+    let selectedInstructorId: number | null = null;
+    if (isAdmin) {
+      const param = Number(new URL(request.url).searchParams.get("instructorId"));
+      selectedInstructorId = Number.isInteger(param) && param > 0 ? param : null;
+    }
+    const scope: AnalyticsScope = isAdmin
+      ? (selectedInstructorId ?? "all")
+      : currentUserId;
+    const instructors = isAdmin
+      ? getUsersByRole(UserRole.Instructor).map((u) => ({ id: u.id, name: u.name }))
+      : [];
+    return {
+      view: "analytics" as const,
+      isAdmin,
+      instructors,
+      selectedInstructorId,
+      overview: getOverviewStats(scope, new Date()),
+    };
   }
 
   const enrolledCourses = getUserEnrolledCourses(currentUserId);
@@ -59,7 +89,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const completedCourses = coursesWithProgress.filter((c) => c.isCompleted);
   const inProgressCourses = coursesWithProgress.filter((c) => !c.isCompleted);
 
-  return { inProgressCourses, completedCourses };
+  return { view: "student" as const, inProgressCourses, completedCourses };
 }
 
 function DashboardCardSkeleton() {
@@ -102,7 +132,16 @@ export function HydrateFallback() {
 }
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
-  const { inProgressCourses, completedCourses } = loaderData;
+  if (loaderData.view === "analytics") {
+    return <InstructorAnalyticsDashboard {...loaderData} />;
+  }
+  return <StudentDashboard {...loaderData} />;
+}
+
+function StudentDashboard({
+  inProgressCourses,
+  completedCourses,
+}: Extract<Route.ComponentProps["loaderData"], { view: "student" }>) {
   const totalCourses = inProgressCourses.length + completedCourses.length;
 
   return (
