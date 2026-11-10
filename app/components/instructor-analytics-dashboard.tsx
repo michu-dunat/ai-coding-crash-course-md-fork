@@ -4,6 +4,8 @@ import { WeeklyEnrollmentChart } from "~/components/weekly-enrollment-chart";
 import type { AtRiskStudent, ContentAnalytics, OverviewStats, RevenueStats, WeeklyEnrollment } from "~/services/instructorAnalyticsService";
 import { RevenueTab } from "~/components/instructor-analytics-revenue";
 import { ContentTab } from "~/components/lesson-funnel-chart";
+import { VideoDropoffCard } from "~/components/video-dropoff-chart";
+import type { LessonVideoDropoff } from "~/services/videoDropoffService";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
@@ -23,6 +25,7 @@ type Props = {
   weeklyEnrollments: WeeklyEnrollment[];
   revenue: RevenueStats;
   content: ContentAnalytics;
+  videoDropoff: LessonVideoDropoff[];
   atRiskStudents: AtRiskStudent[];
 };
 
@@ -111,6 +114,7 @@ export function InstructorAnalyticsDashboard({
   weeklyEnrollments,
   revenue,
   content,
+  videoDropoff,
   atRiskStudents,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -197,6 +201,11 @@ export function InstructorAnalyticsDashboard({
           </TabsContent>
           <TabsContent value="content" className="mt-6">
             <ContentTab content={content} />
+            {content.selectedCourseId !== null && (
+              <div className="mt-6">
+                <VideoDropoffCard lessons={videoDropoff} />
+              </div>
+            )}
           </TabsContent>
           <TabsContent value="revenue" className="mt-6">
             <RevenueTab revenue={revenue} />
