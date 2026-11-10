@@ -10,7 +10,7 @@ import { AlertTriangle, BookOpen, CheckCircle2, GraduationCap, PlayCircle } from
 import { CourseImage } from "~/components/course-image";
 import { data, isRouteErrorResponse } from "react-router";
 import { getUserById, getUsersByRole } from "~/services/userService";
-import { getOverviewStats, getRevenueStats, getWeeklyEnrollments, getContentAnalytics, type AnalyticsScope } from "~/services/instructorAnalyticsService";
+import { getAtRiskStudents, getOverviewStats, getRevenueStats, getWeeklyEnrollments, getContentAnalytics, type AnalyticsScope } from "~/services/instructorAnalyticsService";
 import { UserRole } from "~/db/schema";
 import { InstructorAnalyticsDashboard } from "~/components/instructor-analytics-dashboard";
 
@@ -59,6 +59,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       weeklyEnrollments: getWeeklyEnrollments(scope, new Date()),
       revenue: getRevenueStats(scope, new Date()),
       content: getContentAnalytics(scope, requestedCourseId),
+      atRiskStudents: getAtRiskStudents(scope, new Date()),
     };
   }
 
