@@ -14,6 +14,8 @@ import { RevenueTab } from "~/components/instructor-analytics-revenue";
 import { ContentTab } from "~/components/lesson-funnel-chart";
 import { VideoDropoffCard } from "~/components/video-dropoff-chart";
 import type { LessonVideoDropoff } from "~/services/videoDropoffService";
+import { HardestQuestionsTable } from "~/components/hardest-questions-table";
+import type { HardQuestion } from "~/services/hardestQuestionsService";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
@@ -37,6 +39,7 @@ type Props = {
   revenue: RevenueStats;
   content: ContentAnalytics;
   videoDropoff: LessonVideoDropoff[];
+  hardestQuestions: HardQuestion[];
   atRiskStudents: AtRiskStudent[];
 };
 
@@ -178,6 +181,7 @@ export function InstructorAnalyticsDashboard({
   revenue,
   content,
   videoDropoff,
+  hardestQuestions,
   atRiskStudents,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -283,8 +287,9 @@ export function InstructorAnalyticsDashboard({
           <TabsContent value="content" className="mt-6">
             <ContentTab content={content} />
             {content.selectedCourseId !== null && (
-              <div className="mt-6">
+              <div className="mt-6 space-y-6">
                 <VideoDropoffCard lessons={videoDropoff} />
+                <HardestQuestionsTable questions={hardestQuestions} />
               </div>
             )}
           </TabsContent>

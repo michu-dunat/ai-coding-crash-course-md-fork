@@ -10,6 +10,7 @@ import { AlertTriangle, BookOpen, CheckCircle2, GraduationCap, PlayCircle } from
 import { CourseImage } from "~/components/course-image";
 import { data, isRouteErrorResponse } from "react-router";
 import { getUserById, getUsersByRole } from "~/services/userService";
+import { getHardestQuestions } from "~/services/hardestQuestionsService";
 import {
   getAtRiskStudents,
   getOverviewStats,
@@ -76,6 +77,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       content,
       videoDropoff:
         content.selectedCourseId === null ? [] : getVideoDropoff(content.selectedCourseId),
+      hardestQuestions:
+        content.selectedCourseId === null ? [] : getHardestQuestions(content.selectedCourseId),
       atRiskStudents: getAtRiskStudents(scope, new Date()),
     };
   }
