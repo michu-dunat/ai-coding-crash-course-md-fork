@@ -1,7 +1,8 @@
 import { Link, useSearchParams } from "react-router";
 import { BarChart3 } from "lucide-react";
-import type { OverviewStats, WeeklyEnrollment } from "~/services/instructorAnalyticsService";
 import { WeeklyEnrollmentChart } from "~/components/weekly-enrollment-chart";
+import type { OverviewStats, RevenueStats, WeeklyEnrollment } from "~/services/instructorAnalyticsService";
+import { RevenueTab } from "~/components/instructor-analytics-revenue";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
@@ -19,6 +20,7 @@ type Props = {
   selectedInstructorId: number | null;
   overview: OverviewStats;
   weeklyEnrollments: WeeklyEnrollment[];
+  revenue: RevenueStats;
 };
 
 const ALL = "all";
@@ -53,6 +55,7 @@ export function InstructorAnalyticsDashboard({
   selectedInstructorId,
   overview,
   weeklyEnrollments,
+  revenue,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -136,7 +139,7 @@ export function InstructorAnalyticsDashboard({
             <Placeholder title="Content" />
           </TabsContent>
           <TabsContent value="revenue" className="mt-6">
-            <Placeholder title="Revenue" />
+            <RevenueTab revenue={revenue} />
           </TabsContent>
         </Tabs>
       )}
