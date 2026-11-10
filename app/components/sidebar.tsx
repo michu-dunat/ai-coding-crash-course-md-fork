@@ -59,7 +59,7 @@ const navItems: NavItem[] = [
     label: "Dashboard",
     to: "/dashboard",
     icon: <LayoutDashboard className="size-4" />,
-    roles: [UserRole.Student],
+    roles: [UserRole.Student, UserRole.Instructor, UserRole.Admin],
   },
   {
     label: "My Courses",
