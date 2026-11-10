@@ -1,7 +1,8 @@
 import { Link, useSearchParams } from "react-router";
 import { BarChart3 } from "lucide-react";
-import type { OverviewStats, WeeklyEnrollment } from "~/services/instructorAnalyticsService";
+import type { ContentAnalytics, OverviewStats, WeeklyEnrollment } from "~/services/instructorAnalyticsService";
 import { WeeklyEnrollmentChart } from "~/components/weekly-enrollment-chart";
+import { ContentTab } from "~/components/lesson-funnel-chart";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
@@ -19,6 +20,7 @@ type Props = {
   selectedInstructorId: number | null;
   overview: OverviewStats;
   weeklyEnrollments: WeeklyEnrollment[];
+  content: ContentAnalytics;
 };
 
 const ALL = "all";
@@ -53,11 +55,13 @@ export function InstructorAnalyticsDashboard({
   selectedInstructorId,
   overview,
   weeklyEnrollments,
+  content,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   function onInstructorChange(value: string) {
     const next = new URLSearchParams(searchParams);
+    next.delete("courseId");
     if (value === ALL) next.delete("instructorId");
     else next.set("instructorId", value);
     setSearchParams(next);
@@ -106,7 +110,7 @@ export function InstructorAnalyticsDashboard({
           </Link>
         </div>
       ) : (
-        <Tabs defaultValue="overview">
+        <Tabs defaultValue={searchParams.has("courseId") ? "content" : "overview"}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="students">Students</TabsTrigger>
@@ -133,7 +137,7 @@ export function InstructorAnalyticsDashboard({
             <WeeklyEnrollmentChart weeks={weeklyEnrollments} />
           </TabsContent>
           <TabsContent value="content" className="mt-6">
-            <Placeholder title="Content" />
+            <ContentTab content={content} />
           </TabsContent>
           <TabsContent value="revenue" className="mt-6">
             <Placeholder title="Revenue" />
