@@ -11,7 +11,7 @@ vi.mock("~/db", () => ({
   },
 }));
 
-import { getOverviewStats } from "~/services/instructorAnalyticsService";
+import { getAtRiskStudents, getOverviewStats } from "~/services/instructorAnalyticsService";
 
 const NOW = new Date("2026-06-01T00:00:00.000Z");
 
@@ -158,5 +158,143 @@ describe("getOverviewStats", () => {
     const stats = getOverviewStats(base.instructor.id, NOW);
     expect(stats.quizPassRate).toBe(50);
     expect(stats.averageQuizScore).toBeCloseTo(70);
+  });
+});
+
+describe("getAtRiskStudents", () => {
+  let n = 0;
+  function student(name = "S") {
+    return testDb
+      .insert(schema.users)
+      .values({ name, email: `r${++n}@x.com`, role: schema.UserRole.Student })
+      .returning()
+      .get();
+  }
+  function enroll(userId: number, courseId: number, enrolledAt: string, completedAt: string | null = null) {
+    testDb.insert(schema.enrollments).values({ userId, courseId, enrolledAt, completedAt }).run();
+  }
+
+  it("falls back to the enrollment date and flags only strictly more than 14 days", () => {
+    const old = student("Old");
+    const edge = student("Edge");
+    enroll(old.id, base.course.id, "2026-05-17T23:59:59.999Z");
+    enroll(edge.id, base.course.id, "2026-05-18T00:00:00.000Z"); // exactly 14 days
+    expect(getAtRiskStudents(base.instructor.id, NOW)).toEqual([
+      {
+        userId: old.id,
+        name: "Old",
+        courseId: base.course.id,
+        courseTitle: base.course.title,
+        progress: 0,
+        lastActiveAt: "2026-05-17T23:59:59.999Z",
+      },
+    ]);
+  });
+
+  function lesson() {
+    const mod = testDb
+      .insert(schema.modules)
+      .values({ courseId: base.course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    return testDb
+      .insert(schema.lessons)
+      .values({ moduleId: mod.id, title: "L", position: 1 })
+      .returning()
+      .get();
+  }
+  const OLD = "2026-01-01T00:00:00.000Z";
+  const RECENT = "2026-05-25T00:00:00.000Z"; // 7 days ago
+  const STALE = "2026-05-01T00:00:00.000Z"; // 31 days ago
+
+  const sources: Record<string, (userId: number, lessonId: number, at: string) => void> = {
+    "video watch events": (userId, lessonId, at) =>
+      testDb.insert(schema.videoWatchEvents).values({ userId, lessonId, eventType: "play", positionSeconds: 0, createdAt: at }).run(),
+    comments: (userId, lessonId, at) =>
+      testDb.insert(schema.comments).values({ userId, lessonId, body: "hi", createdAt: at }).run(),
+    "quiz attempts": (userId, lessonId, at) => {
+      const quiz = testDb.insert(schema.quizzes).values({ lessonId, title: "Q", passingScore: 0.7 }).returning().get();
+      testDb.insert(schema.quizAttempts).values({ userId, quizId: quiz.id, score: 0.5, passed: false, attemptedAt: at }).run();
+    },
+    "lesson completions": (userId, lessonId, at) =>
+      testDb.insert(schema.lessonProgress).values({ userId, lessonId, status: schema.LessonProgressStatus.Completed, completedAt: at }).run(),
+  };
+
+  for (const [label, record] of Object.entries(sources)) {
+    it(`counts ${label} as activity`, () => {
+      const l = lesson();
+      const active = student();
+      const stale = student();
+      enroll(active.id, base.course.id, OLD);
+      enroll(stale.id, base.course.id, OLD);
+      record(active.id, l.id, RECENT);
+      record(stale.id, l.id, STALE);
+      const rows = getAtRiskStudents(base.instructor.id, NOW);
+      expect(rows.map((r) => r.userId)).toEqual([stale.id]);
+      expect(rows[0].lastActiveAt).toBe(STALE);
+    });
+  }
+
+  it("ignores activity in other courses", () => {
+    const other = testDb
+      .insert(schema.courses)
+      .values({ title: "Other", slug: "other-c", description: "d", salesCopy: "s", instructorId: base.instructor.id, categoryId: base.category.id, status: schema.CourseStatus.Published })
+      .returning()
+      .get();
+    const mod = testDb.insert(schema.modules).values({ courseId: other.id, title: "M", position: 1 }).returning().get();
+    const l = testDb.insert(schema.lessons).values({ moduleId: mod.id, title: "L", position: 1 }).returning().get();
+    const s = student();
+    enroll(s.id, base.course.id, OLD);
+    sources.comments(s.id, l.id, RECENT);
+    expect(getAtRiskStudents(base.instructor.id, NOW).map((r) => [r.userId, r.courseId])).toEqual([
+      [s.id, base.course.id],
+    ]);
+  });
+
+  it("reports progress as the share of lessons completed", () => {
+    const a = lesson();
+    lesson();
+    const s = student();
+    enroll(s.id, base.course.id, OLD);
+    sources["lesson completions"](s.id, a.id, STALE);
+    expect(getAtRiskStudents(base.instructor.id, NOW)[0].progress).toBe(50);
+  });
+
+  it("never lists students who completed the course", () => {
+    enroll(student().id, base.course.id, OLD, "2026-02-01T00:00:00.000Z");
+    expect(getAtRiskStudents(base.instructor.id, NOW)).toEqual([]);
+  });
+
+  it("sorts by longest inactivity first and caps at 25", () => {
+    const ids: number[] = [];
+    for (let i = 0; i < 30; i++) {
+      const s = student();
+      ids.push(s.id);
+      // i = 0 is the most recently enrolled, i = 29 the oldest
+      enroll(s.id, base.course.id, new Date(Date.UTC(2026, 3, 30 - i)).toISOString());
+    }
+    const rows = getAtRiskStudents(base.instructor.id, NOW);
+    expect(rows).toHaveLength(25);
+    expect(rows.map((r) => r.userId)).toEqual(ids.slice(5).reverse());
+  });
+
+  it("respects instructor scope and 'all'", () => {
+    const other = testDb
+      .insert(schema.users)
+      .values({ name: "O", email: "o-risk@x.com", role: schema.UserRole.Instructor })
+      .returning()
+      .get();
+    const otherCourse = testDb
+      .insert(schema.courses)
+      .values({ title: "Other", slug: "other-risk", description: "d", salesCopy: "s", instructorId: other.id, categoryId: base.category.id, status: schema.CourseStatus.Published })
+      .returning()
+      .get();
+    const mine = student();
+    const theirs = student();
+    enroll(mine.id, base.course.id, OLD);
+    enroll(theirs.id, otherCourse.id, OLD);
+    expect(getAtRiskStudents(base.instructor.id, NOW).map((r) => r.userId)).toEqual([mine.id]);
+    expect(getAtRiskStudents(other.id, NOW).map((r) => r.userId)).toEqual([theirs.id]);
+    expect(getAtRiskStudents("all", NOW)).toHaveLength(2);
   });
 });

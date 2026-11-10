@@ -10,7 +10,7 @@ import { AlertTriangle, BookOpen, CheckCircle2, GraduationCap, PlayCircle } from
 import { CourseImage } from "~/components/course-image";
 import { data, isRouteErrorResponse } from "react-router";
 import { getUserById, getUsersByRole } from "~/services/userService";
-import { getOverviewStats, type AnalyticsScope } from "~/services/instructorAnalyticsService";
+import { getAtRiskStudents, getOverviewStats, type AnalyticsScope } from "~/services/instructorAnalyticsService";
 import { UserRole } from "~/db/schema";
 import { InstructorAnalyticsDashboard } from "~/components/instructor-analytics-dashboard";
 
@@ -53,6 +53,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       instructors,
       selectedInstructorId,
       overview: getOverviewStats(scope, new Date()),
+      atRiskStudents: getAtRiskStudents(scope, new Date()),
     };
   }
 

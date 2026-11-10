@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router";
 import { BarChart3 } from "lucide-react";
-import type { OverviewStats } from "~/services/instructorAnalyticsService";
+import type { AtRiskStudent, OverviewStats } from "~/services/instructorAnalyticsService";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
@@ -17,7 +17,59 @@ type Props = {
   instructors: { id: number; name: string }[];
   selectedInstructorId: number | null;
   overview: OverviewStats;
+  atRiskStudents: AtRiskStudent[];
 };
+
+function AtRiskList({ students }: { students: AtRiskStudent[] }) {
+  if (students.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+        No students are at risk. Everyone has been active in the last 14 days.
+      </div>
+    );
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <h2 className="text-lg font-semibold">At-risk students</h2>
+        <p className="text-sm text-muted-foreground">
+          Inactive for more than 14 days, longest inactivity first.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <table className="w-full text-sm">
+          <thead className="text-left text-muted-foreground">
+            <tr>
+              <th className="pb-2 font-medium">Student</th>
+              <th className="pb-2 font-medium">Course</th>
+              <th className="pb-2 font-medium">Progress</th>
+              <th className="pb-2 font-medium">Last active</th>
+              <th className="pb-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {students.map((s) => (
+              <tr key={`${s.userId}:${s.courseId}`} className="border-t">
+                <td className="py-2">{s.name}</td>
+                <td className="py-2">{s.courseTitle}</td>
+                <td className="py-2">{formatPct(s.progress)}</td>
+                <td className="py-2">{new Date(s.lastActiveAt).toLocaleDateString()}</td>
+                <td className="py-2 text-right">
+                  <Link
+                    to={`/instructor/${s.courseId}/students`}
+                    className="text-primary hover:underline"
+                  >
+                    View roster
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  );
+}
 
 const ALL = "all";
 
@@ -50,6 +102,7 @@ export function InstructorAnalyticsDashboard({
   instructors,
   selectedInstructorId,
   overview,
+  atRiskStudents,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -127,7 +180,7 @@ export function InstructorAnalyticsDashboard({
             </div>
           </TabsContent>
           <TabsContent value="students" className="mt-6">
-            <Placeholder title="Student" />
+            <AtRiskList students={atRiskStudents} />
           </TabsContent>
           <TabsContent value="content" className="mt-6">
             <Placeholder title="Content" />
